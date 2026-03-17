@@ -743,6 +743,21 @@ func proxyVMAlertRequests(w http.ResponseWriter, r *http.Request, path string) {
 	req := r.Clone(r.Context())
 	req.URL.Path = strings.TrimPrefix(path, "prometheus")
 	req.Host = vmalertProxyHost
+	// A single vmalert may contain alerts for metrics, logs, and traces.
+	// Clients expecting only metrics alerts should use `?datasource_type=prometheus` filter.
+	// vmui applies this filter automatically, but Grafana queries the alert API
+	// directly. We cannot enforce the filter via vm datasource.
+	// See:
+	// - https://github.com/VictoriaMetrics/victoriametrics-datasource/issues/329#issuecomment-3847585443
+	// - https://github.com/VictoriaMetrics/victoriametrics-datasource/issues/59
+	//
+	// Therefor when proxying via vmselect, we should enforce the filter to ?datasource_type=prometheus.
+	// Other alert ds types won't be recognized by Grafana anyway.
+	q := req.URL.Query()
+	q.Set("datasource_type", "prometheus")
+	req.URL.RawQuery = q.Encode()
+	req.RequestURI = ""
+
 	vmalertProxy.ServeHTTP(w, req)
 }
 
